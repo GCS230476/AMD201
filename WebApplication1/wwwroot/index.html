@@ -1,0 +1,88 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>URL Shortener</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 2rem;
+            background-color: #f9f9f9;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        input[type="text"] {
+            width: 60%;
+            padding: 8px;
+            font-size: 1rem;
+        }
+
+        button {
+            padding: 8px 12px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+
+        .result {
+            margin-top: 1rem;
+        }
+
+        .error {
+            color: red;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Shorten a URL</h1>
+    <input type="text" id="urlInput" placeholder="Paste a URL here..." />
+    <button onclick="shortenUrl()">Shorten</button>
+
+    <div class="result" id="result"></div>
+    <div class="error" id="error"></div>
+
+    <script>
+        async function shortenUrl() {
+            const input = document.getElementById('urlInput').value.trim();
+            const resultDiv = document.getElementById('result');
+            const errorDiv = document.getElementById('error');
+            resultDiv.textContent = '';
+            errorDiv.textContent = '';
+
+            if (!input) {
+                errorDiv.textContent = 'Please enter a URL.';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/Url/shorten', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(input)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    errorDiv.textContent = error?.title || 'Something went wrong.';
+                    return;
+                }
+
+                const data = await response.json();
+                const shortUrl = data.shortUrl;
+
+                resultDiv.innerHTML = `
+              Short URL: <a href="${shortUrl}" target="_blank">${shortUrl}</a>
+            `;
+            } catch (err) {
+                errorDiv.textContent = 'Failed to connect to server.';
+            }
+        }
+    </script>
+</body>
+</html>
