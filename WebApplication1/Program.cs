@@ -1,11 +1,15 @@
-﻿using WebApplication1.Services;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using WebApplication1.Data;
+using WebApplication1.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 1) Read the connection string from appsettings(.Development).json
+var conn = builder.Configuration.GetConnectionString("Default");
+
+// 2) Use SQL Server (not SQLite)
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=urls.db"));
+    options.UseSqlServer(conn));
 
 builder.Services.AddScoped<UrlService>();
 
@@ -15,7 +19,7 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Optional: Ensure DB is created on first run
+// Optional for dev; if you use migrations you can remove this later
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -28,12 +32,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// 👉 Add this line BELOW `app.UseSwaggerUI();` and ABOVE `UseHttpsRedirection`
+app.UseDefaultFiles();
 app.UseStaticFiles();
-
 app.UseHttpsRedirection();
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();
