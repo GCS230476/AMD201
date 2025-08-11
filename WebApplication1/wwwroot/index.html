@@ -39,7 +39,9 @@
 </head>
 <body>
     <h1>Shorten a URL</h1>
-    <input type="text" id="urlInput" placeholder="Paste a URL here..." />
+
+    <input id="urlInput" type="text" placeholder="Enter long URL" />
+    <input id="codeInput" type="text" placeholder="Custom code (optional)" />
     <button onclick="shortenUrl()">Shorten</button>
 
     <div class="result" id="result"></div>
@@ -47,39 +49,52 @@
 
     <script>
         async function shortenUrl() {
-            const input = document.getElementById('urlInput').value.trim();
+            const urlInput = document.getElementById('urlInput').value.trim();
+            const codeInput = document.getElementById('codeInput').value.trim();
             const resultDiv = document.getElementById('result');
             const errorDiv = document.getElementById('error');
+
             resultDiv.textContent = '';
             errorDiv.textContent = '';
 
-            if (!input) {
+            if (!urlInput) {
                 errorDiv.textContent = 'Please enter a URL.';
                 return;
             }
 
+            const body = {
+                originalUrl: urlInput,
+                customCode: codeInput || null
+            };
+
             try {
-                const response = await fetch('/api/Url/shorten', {
+                const resp = await fetch('/api/Url/shorten', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(input)
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
                 });
 
-                if (!response.ok) {
-                    const error = await response.json();
-                    errorDiv.textContent = error?.title || 'Something went wrong.';
+                if (!resp.ok) {
+                    // Try to read meaningful errors from FluentValidation / model state
+                    let msg = 'One or more validation errors occurred.';
+                    try {
+                        const err = await resp.json();
+                        if (err?.errors) {
+                            // collect messages
+                            msg = Object.values(err.errors).flat().join(' ');
+                        } else if (err?.title) {
+                            msg = err.title;
+                        }
+                    } catch { /* ignore parse errors */ }
+                    errorDiv.textContent = msg;
                     return;
                 }
 
-                const data = await response.json();
+                const data = await resp.json();
                 const shortUrl = data.shortUrl;
 
-                resultDiv.innerHTML = `
-              Short URL: <a href="${shortUrl}" target="_blank">${shortUrl}</a>
-            `;
-            } catch (err) {
+                resultDiv.innerHTML = `Short URL: <a href="${shortUrl}" target="_blank">${shortUrl}</a>`;
+            } catch {
                 errorDiv.textContent = 'Failed to connect to server.';
             }
         }

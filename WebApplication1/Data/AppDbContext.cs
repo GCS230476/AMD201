@@ -6,9 +6,7 @@ namespace WebApplication1.Data
     public class AppDbContext : DbContext
     {
         public AppDbContext(DbContextOptions<AppDbContext> options)
-            : base(options)
-        {
-        }
+            : base(options) { }
 
         public DbSet<UrlMapping> UrlMappings { get; set; }
 
@@ -16,16 +14,15 @@ namespace WebApplication1.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // short code must be unique
             modelBuilder.Entity<UrlMapping>()
                 .HasIndex(u => u.ShortCode)
                 .IsUnique();
 
-            // OPTIONAL: enforce one short link per OriginalUrl (1:1)
-            // If you keep this, make sure there are no duplicate OriginalUrl rows
+            // OPTIONAL: make each OriginalUrl unique (1:1 mapping)
             modelBuilder.Entity<UrlMapping>()
                 .HasIndex(u => u.OriginalUrl)
                 .IsUnique();
+
         }
     }
 }

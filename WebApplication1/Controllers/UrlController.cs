@@ -1,9 +1,10 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using System.Linq;
 using System.Security.Cryptography;
-using System.Text;
 using WebApplication1.Data;
 using WebApplication1.Models;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace WebApplication1.Controllers
 {
@@ -12,22 +13,26 @@ namespace WebApplication1.Controllers
     public class UrlController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IMemoryCache _cache;
 
-        public UrlController(AppDbContext context)
+        public UrlController(AppDbContext context, IMemoryCache cache)
         {
             _context = context;
+            _cache = cache;
         }
 
+        // POST: /api/Url/shorten
+        // Strong-typed binding + DataAnnotations
         [HttpPost("shorten")]
-        [Consumes("application/json", "text/plain")]
-        public IActionResult Shorten([FromBody] string originalUrl)
+        [EnableRateLimiting("shorten-policy")]                // 🔹 rate limit
+        public IActionResult Shorten([FromBody] ShortenRequest req)
         {
-            if (string.IsNullOrWhiteSpace(originalUrl))
-                return BadRequest("URL cannot be empty.");
+            if (!ModelState.IsValid)
+                return ValidationProblem(ModelState);
 
-            originalUrl = originalUrl.Trim();
+            var originalUrl = req.OriginalUrl.Trim();
 
-            // 1) Reuse if exists
+            // 1) If you enforce 1:1 OriginalUrl mapping, reuse existing row
             var existing = _context.UrlMappings.FirstOrDefault(u => u.OriginalUrl == originalUrl);
             if (existing != null)
             {
@@ -35,12 +40,20 @@ namespace WebApplication1.Controllers
                 return Ok(new { shortUrl = existingShort, reused = true });
             }
 
-            // 2) Otherwise create a unique new code
+            // 2) Use custom code if provided; ensure it's free
             string code;
-            do
+            if (!string.IsNullOrWhiteSpace(req.CustomCode))
             {
-                code = GetRandomCode(6);
-            } while (_context.UrlMappings.Any(u => u.ShortCode == code)); // collision guard
+                code = req.CustomCode!;
+                if (_context.UrlMappings.Any(u => u.ShortCode == code))
+                    return Conflict("Custom code is already taken.");
+            }
+            else
+            {
+                // 3) Generate a nice random Base62 code, small collision guard
+                do { code = NewCode(7); }
+                while (_context.UrlMappings.Any(u => u.ShortCode == code));
+            }
 
             var mapping = new UrlMapping
             {
@@ -56,22 +69,35 @@ namespace WebApplication1.Controllers
             return Ok(new { shortUrl, reused = false });
         }
 
-        private static string GetRandomCode(int length)
-        {
-            const string alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-            var bytes = RandomNumberGenerator.GetBytes(length);
-            var chars = new char[length];
-            for (int i = 0; i < length; i++)
-                chars[i] = alphabet[bytes[i] % alphabet.Length];
-            return new string(chars);
-        }
-
+        // GET: /api/Url/{code}  -> redirect (with cache)
         [HttpGet("{code}")]
         public IActionResult RedirectToOriginal(string code)
         {
-            var mapping = _context.UrlMappings.FirstOrDefault(u => u.ShortCode == code);
-            if (mapping == null) return NotFound("Short URL not found.");
-            return Redirect(mapping.OriginalUrl);
+            // 🔹 check cache first
+            if (!_cache.TryGetValue(code, out string? original))
+            {
+                original = _context.UrlMappings
+                    .Where(u => u.ShortCode == code)
+                    .Select(u => u.OriginalUrl)
+                    .FirstOrDefault();
+
+                if (original == null)
+                    return NotFound("Short URL not found.");
+
+                // cache for 10 minutes
+                _cache.Set(code, original, TimeSpan.FromMinutes(10));
+            }
+
+            return Redirect(original);
+        }
+
+        private static string NewCode(int len = 7)
+        {
+            const string set = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            var bytes = RandomNumberGenerator.GetBytes(len);
+            var chars = new char[len];
+            for (int i = 0; i < len; i++) chars[i] = set[bytes[i] % set.Length];
+            return new string(chars);
         }
     }
 }
