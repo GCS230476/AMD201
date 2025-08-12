@@ -15,14 +15,24 @@ namespace WebApplication1.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            modelBuilder.Entity<UrlMapping>()
-                .HasIndex(u => u.ShortCode)
-                .IsUnique();
+            modelBuilder.Entity<UrlMapping>(e =>
+            {
+                e.Property(x => x.OriginalUrl)
+                    .HasMaxLength(2048)
+                    .IsRequired();
 
-            // Keep this only if you want strict 1:1 long->short
-            modelBuilder.Entity<UrlMapping>()
-                .HasIndex(u => u.OriginalUrl)
-                .IsUnique();
+                e.Property(x => x.ShortCode)
+                    .HasMaxLength(30)
+                    .IsRequired();
+
+                e.Property(x => x.CreatedAt)
+                    .IsRequired();
+
+                // Indexes
+                e.HasIndex(x => x.ShortCode).IsUnique();
+                e.HasIndex(x => x.OriginalUrl).IsUnique(); // 1:1 mapping
+            });
         }
+
     }
 }

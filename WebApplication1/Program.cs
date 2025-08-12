@@ -41,11 +41,11 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Ensure DB exists (fine for dev)
+// Program.cs (after app = builder.Build())
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+    db.Database.Migrate(); // <-- applies migrations automatically on startup
 }
 
 if (app.Environment.IsDevelopment())
