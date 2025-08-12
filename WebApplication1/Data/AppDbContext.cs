@@ -5,10 +5,11 @@ namespace WebApplication1.Data
 {
     public class AppDbContext : DbContext
     {
+        // ✅ DI needs this
         public AppDbContext(DbContextOptions<AppDbContext> options)
             : base(options) { }
 
-        public DbSet<UrlMapping> UrlMappings { get; set; }
+        public DbSet<UrlMapping> UrlMappings { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -18,11 +19,10 @@ namespace WebApplication1.Data
                 .HasIndex(u => u.ShortCode)
                 .IsUnique();
 
-            // OPTIONAL: make each OriginalUrl unique (1:1 mapping)
+            // Keep this only if you want strict 1:1 long->short
             modelBuilder.Entity<UrlMapping>()
                 .HasIndex(u => u.OriginalUrl)
                 .IsUnique();
-
         }
     }
 }

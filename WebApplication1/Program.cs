@@ -10,7 +10,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 // SQL Server connection (you already set this)
 var conn = builder.Configuration.GetConnectionString("Default");
-builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlServer(conn));
+
+builder.Services.AddDbContext<WebApplication1.Data.AppDbContext>(options =>
+    options.UseSqlServer(conn));
+
 
 builder.Services.AddScoped<UrlService>(); // if you still have it (ok to keep/not use)
 
