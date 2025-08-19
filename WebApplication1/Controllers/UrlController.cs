@@ -1,103 +1,70 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
-using System.Linq;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using WebApplication1.Data;
 using WebApplication1.Models;
-using Microsoft.AspNetCore.RateLimiting;
 
-namespace WebApplication1.Controllers
+[ApiController]
+[Route("api/[controller]")]
+public class UrlController : ControllerBase
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    public class UrlController : ControllerBase
+    private readonly AppDbContext _db;
+
+    public UrlController(AppDbContext db)
     {
-        private readonly AppDbContext _context;
-        private readonly IMemoryCache _cache;
+        _db = db;
+    }
 
-        public UrlController(AppDbContext context, IMemoryCache cache)
+    [HttpPost("shorten")]
+    public IActionResult Shorten([FromBody] ShortenRequest req)
+    {
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
+
+        var originalUrl = req.OriginalUrl.Trim();
+        var existing = _db.UrlMappings.FirstOrDefault(u => u.OriginalUrl == originalUrl);
+        if (existing != null)
         {
-            _context = context;
-            _cache = cache;
+            var shortUrlExisting = $"{Request.Scheme}://{Request.Host}/r/{existing.ShortCode}";
+            return Ok(new { shortUrl = shortUrlExisting, reused = true });
         }
 
-        // POST: /api/Url/shorten
-        // Strong-typed binding + DataAnnotations
-        [HttpPost("shorten")]
-        [EnableRateLimiting("shorten-policy")]                // 🔹 rate limit
-        public IActionResult Shorten([FromBody] ShortenRequest req)
+        string code;
+        do
         {
-            if (!ModelState.IsValid)
-                return ValidationProblem(ModelState);
+            code = GetRandomCode(5);
+        } while (_db.UrlMappings.Any(u => u.ShortCode == code));
 
-            var originalUrl = req.OriginalUrl.Trim();
-
-            // 1) If you enforce 1:1 OriginalUrl mapping, reuse existing row
-            var existing = _context.UrlMappings.FirstOrDefault(u => u.OriginalUrl == originalUrl);
-            if (existing != null)
-            {
-                var existingShort = $"{Request.Scheme}://{Request.Host}/api/Url/{existing.ShortCode}";
-                return Ok(new { shortUrl = existingShort, reused = true });
-            }
-
-            // 2) Use custom code if provided; ensure it's free
-            string code;
-            if (!string.IsNullOrWhiteSpace(req.CustomCode))
-            {
-                code = req.CustomCode!;
-                if (_context.UrlMappings.Any(u => u.ShortCode == code))
-                    return Conflict("Custom code is already taken.");
-            }
-            else
-            {
-                // 3) Generate a nice random Base62 code, small collision guard
-                do { code = NewCode(7); }
-                while (_context.UrlMappings.Any(u => u.ShortCode == code));
-            }
-
-            var mapping = new UrlMapping
-            {
-                OriginalUrl = originalUrl,
-                ShortCode = code,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _context.UrlMappings.Add(mapping);
-            _context.SaveChanges();
-
-            var shortUrl = $"{Request.Scheme}://{Request.Host}/api/Url/{code}";
-            return Ok(new { shortUrl, reused = false });
-        }
-
-        // GET: /api/Url/{code}  -> redirect (with cache)
-        [HttpGet("{code}")]
-        public IActionResult RedirectToOriginal(string code)
+        var mapping = new UrlMapping
         {
-            // 🔹 check cache first
-            if (!_cache.TryGetValue(code, out string? original))
-            {
-                original = _context.UrlMappings
-                    .Where(u => u.ShortCode == code)
-                    .Select(u => u.OriginalUrl)
-                    .FirstOrDefault();
+            OriginalUrl = originalUrl,
+            ShortCode = code,
+            CreatedAt = DateTime.UtcNow
+        };
 
-                if (original == null)
-                    return NotFound("Short URL not found.");
+        _db.UrlMappings.Add(mapping);
+        _db.SaveChanges();
 
-                // cache for 10 minutes
-                _cache.Set(code, original, TimeSpan.FromMinutes(10));
-            }
+        var shortUrl = $"{Request.Scheme}://{Request.Host}/r/{code}";
+        return Ok(new { shortUrl, reused = false });
+    }
 
-            return Redirect(original);
-        }
+    [HttpGet("/r/{code}")]
+    public async Task<IActionResult> RedirectToOriginal(string code)
+    {
+        var item = await _db.UrlMappings.FirstOrDefaultAsync(x => x.ShortCode == code);
+        if (item == null)
+            return NotFound("Short URL not found.");
 
-        private static string NewCode(int len = 7)
-        {
-            const string set = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-            var bytes = RandomNumberGenerator.GetBytes(len);
-            var chars = new char[len];
-            for (int i = 0; i < len; i++) chars[i] = set[bytes[i] % set.Length];
-            return new string(chars);
-        }
+        return Redirect(item.OriginalUrl);
+    }
+
+    private static string GetRandomCode(int length)
+    {
+        const string alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        var bytes = RandomNumberGenerator.GetBytes(length);
+        var chars = new char[length];
+        for (int i = 0; i < length; i++)
+            chars[i] = alphabet[bytes[i] % alphabet.Length];
+        return new string(chars);
     }
 }

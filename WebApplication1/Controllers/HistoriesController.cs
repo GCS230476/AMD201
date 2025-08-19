@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using WebApplication1.Data;
+using Microsoft.EntityFrameworkCore;
 using System.Linq;
+using WebApplication1.Data;
 
 namespace WebApplication1.Controllers
 {
@@ -12,10 +13,11 @@ namespace WebApplication1.Controllers
         public HistoriesController(AppDbContext db) => _db = db;
 
         // GET: /api/Histories?take=20
+
         [HttpGet]
-        public IActionResult Get([FromQuery] int take = 20)
+        public async Task<IActionResult> Get([FromQuery] int take = 20)
         {
-            var items = _db.UrlMappings
+            var items = await _db.UrlMappings
                 .OrderByDescending(x => x.Id)
                 .Take(take)
                 .Select(x => new
@@ -25,10 +27,12 @@ namespace WebApplication1.Controllers
                     x.ShortCode,
                     x.CreatedAt
                 })
-                .ToList();
+                .ToListAsync();
 
             return Ok(items);
         }
+
+        // DELETE: /api/Histories/{id}
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteHistory(int id)
         {

@@ -1,26 +1,28 @@
-﻿using WebApplication1.Services;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
+using FluentValidation;
+
 using WebApplication1.Data;
-using Microsoft.AspNetCore.RateLimiting;   // <- add
-using System.Threading.RateLimiting;       // <- add
-using FluentValidation;                    // <- add
-using WebApplication1.Validators;          // <- namespace for your validator
+using WebApplication1.Services;
+using WebApplication1.Validators;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// SQL Server connection (you already set this)
-var conn = builder.Configuration.GetConnectionString("Default");
+// ------------------ Services ------------------
 
-builder.Services.AddDbContext<WebApplication1.Data.AppDbContext>(options =>
+// DB: SQL Server using "Default" from appsettings.json
+var conn = builder.Configuration.GetConnectionString("Default");
+builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(conn));
 
+// Optional app service (keep if you use it)
+builder.Services.AddScoped<UrlService>();
 
-builder.Services.AddScoped<UrlService>(); // if you still have it (ok to keep/not use)
-
-// 🔹 Add memory cache
+// Caching
 builder.Services.AddMemoryCache();
 
-// 🔹 Add rate limiting (5 requests/sec for the shorten endpoint)
+// Rate limiting (example: 5 requests/second for endpoints using this policy)
 builder.Services.AddRateLimiter(options =>
 {
     options.AddFixedWindowLimiter("shorten-policy", opt =>
@@ -31,21 +33,23 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
+// MVC + FluentValidation
 builder.Services.AddControllers();
-
-// 🔹 Register FluentValidation validators
 builder.Services.AddValidatorsFromAssemblyContaining<ShortenRequestValidator>();
 
+// Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Program.cs (after app = builder.Build())
+// ------------------ Pipeline ------------------
+
+// Auto-apply EF Core migrations at startup (remove if you prefer manual Update-Database)
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate(); // <-- applies migrations automatically on startup
+    db.Database.Migrate();
 }
 
 if (app.Environment.IsDevelopment())
@@ -54,16 +58,18 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Serve wwwroot (index.html, css, js, etc.)
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.UseHttpsRedirection();
 
-// 🔹 Enable rate limiter middleware
+// Enable rate limiting middleware
 app.UseRateLimiter();
 
 app.UseAuthorization();
 
+// Map controllers (API)
 app.MapControllers();
 
 app.Run();

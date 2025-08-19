@@ -5,34 +5,18 @@ namespace WebApplication1.Data
 {
     public class AppDbContext : DbContext
     {
-        // ✅ DI needs this
-        public AppDbContext(DbContextOptions<AppDbContext> options)
-            : base(options) { }
+        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-        public DbSet<UrlMapping> UrlMappings { get; set; } = null!;
+        public DbSet<UrlMapping> UrlMappings { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            // Fluent API example: make ShortCode unique
+            modelBuilder.Entity<UrlMapping>()
+                .HasIndex(u => u.ShortCode)
+                .IsUnique();
+
             base.OnModelCreating(modelBuilder);
-
-            modelBuilder.Entity<UrlMapping>(e =>
-            {
-                e.Property(x => x.OriginalUrl)
-                    .HasMaxLength(2048)
-                    .IsRequired();
-
-                e.Property(x => x.ShortCode)
-                    .HasMaxLength(30)
-                    .IsRequired();
-
-                e.Property(x => x.CreatedAt)
-                    .IsRequired();
-
-                // Indexes
-                e.HasIndex(x => x.ShortCode).IsUnique();
-                e.HasIndex(x => x.OriginalUrl).IsUnique(); // 1:1 mapping
-            });
         }
-
     }
 }
